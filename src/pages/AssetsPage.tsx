@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetResource, AssetType } from '../types';
 import { uploadToCloudinary } from '../lib/cloudinary';
-import { Image, Upload, Trash2, ExternalLink, Download, X, Check, Shield } from 'lucide-react';
+import { Image, Upload, Trash2, ExternalLink, Download, X, Check, Shield, Eye } from 'lucide-react';
 
 export const AssetsPage: React.FC = () => {
   const { assets, projects, addAsset, deleteAsset } = useData();
@@ -14,6 +14,7 @@ export const AssetsPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<AssetResource | null>(null);
 
   const [newAsset, setNewAsset] = useState<{
     name: string;
@@ -42,7 +43,7 @@ export const AssetsPage: React.FC = () => {
 
     try {
       const result = await uploadToCloudinary(selectedFile, 'assets', (p) => setUploadProgress(p));
-      addAsset({
+      await addAsset({
         name: newAsset.name,
         type: newAsset.type,
         project_id: newAsset.project_id || null,
@@ -56,6 +57,25 @@ export const AssetsPage: React.FC = () => {
       setNewAsset({ name: '', type: 'Logo', project_id: null });
     } catch (err: any) {
       alert('Upload failed: ' + err.message);
+    }
+  };
+
+  const handleDownload = async (asset: AssetResource) => {
+    try {
+      const response = await fetch(asset.cloudinary_url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      const fileExt = asset.cloudinary_url.split('.').pop()?.split('?')[0] || 'jpg';
+      link.download = `${asset.name.replace(/[^a-z0-9_\-]/gi, '_')}.${fileExt}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      // Fallback: open URL in new tab for direct save
+      window.open(asset.cloudinary_url, '_blank');
     }
   };
 
@@ -83,7 +103,7 @@ export const AssetsPage: React.FC = () => {
           </p>
         </div>
 
-        {canManage && !isUploading && (
+        {canManage && (
           <button className="btn btn-primary" onClick={() => setIsUploading(true)} title="Upload Official Asset">
             <Upload size={14} /> <span className="hide-on-mobile-text">Upload Asset</span>
           </button>
@@ -97,41 +117,47 @@ export const AssetsPage: React.FC = () => {
         </div>
       )}
 
+      {/* Upload Asset Modal */}
       {isUploading && (
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-            <h2 style={{ fontSize: '15px' }}>Upload Controlled Official Asset</h2>
-            <button className="btn-ghost btn-sm" onClick={() => setIsUploading(false)}><X size={14} /></button>
-          </div>
-
-          <form onSubmit={handleUploadSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ border: '2px dashed var(--border-color)', padding: '24px', textAlign: 'center', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
-              <input
-                type="file"
-                required
-                accept="image/*,.svg,.pdf"
-                id="asset-file-input"
-                onChange={e => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    setSelectedFile(f);
-                    if (!newAsset.name) setNewAsset(prev => ({ ...prev, name: f.name.replace(/\.[^/.]+$/, "") }));
-                  }
-                }}
-                style={{ display: 'none' }}
-              />
-              <label htmlFor="asset-file-input" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                <Upload size={24} style={{ color: 'var(--accent)' }} />
-                <span style={{ fontSize: '13px', fontWeight: 500 }}>
-                  {selectedFile ? selectedFile.name : 'Choose Logo, Poster, or Official Photo'}
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Stored securely under sot-archive/assets/
-                </span>
-              </label>
+        <div className="modal-overlay" onClick={() => !uploadProgress && setIsUploading(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', paddingBottom: '12px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Upload size={18} style={{ color: 'var(--accent)' }} />
+                <h2 style={{ fontSize: '16px', fontWeight: 600 }}>Upload Controlled Official Asset</h2>
+              </div>
+              <button className="btn-ghost btn-sm" onClick={() => !uploadProgress && setIsUploading(false)}>
+                <X size={16} />
+              </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px' }}>
+            <form onSubmit={handleUploadSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ border: '2px dashed var(--border-color)', padding: '28px 20px', textAlign: 'center', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
+                <input
+                  type="file"
+                  required
+                  accept="image/*,.svg,.pdf"
+                  id="asset-file-input"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      setSelectedFile(f);
+                      if (!newAsset.name) setNewAsset(prev => ({ ...prev, name: f.name.replace(/\.[^/.]+$/, "") }));
+                    }
+                  }}
+                  style={{ display: 'none' }}
+                />
+                <label htmlFor="asset-file-input" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                  <Upload size={28} style={{ color: 'var(--accent)' }} />
+                  <span style={{ fontSize: '13px', fontWeight: 500 }}>
+                    {selectedFile ? selectedFile.name : 'Choose Logo, Poster, or Official Photo'}
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : 'Stored securely under sot-archive/assets/'}
+                  </span>
+                </label>
+              </div>
+
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Asset Name</label>
                 <input
@@ -144,47 +170,96 @@ export const AssetsPage: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Asset Classification</label>
-                <select
-                  className="select"
-                  value={newAsset.type}
-                  onChange={e => setNewAsset({ ...newAsset, type: e.target.value as any })}
-                >
-                  <option value="Logo">Official Logo</option>
-                  <option value="Photo">Official Photo</option>
-                  <option value="Poster">Exhibition Poster</option>
-                  <option value="Branding">Brand Guidelines Art</option>
-                  <option value="Other">Other Visual</option>
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Asset Classification</label>
+                  <select
+                    className="select"
+                    value={newAsset.type}
+                    onChange={e => setNewAsset({ ...newAsset, type: e.target.value as any })}
+                  >
+                    <option value="Logo">Official Logo</option>
+                    <option value="Photo">Official Photo</option>
+                    <option value="Poster">Exhibition Poster</option>
+                    <option value="Branding">Brand Guidelines Art</option>
+                    <option value="Other">Other Visual</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Project Association</label>
+                  <select
+                    className="select"
+                    value={newAsset.project_id || ''}
+                    onChange={e => setNewAsset({ ...newAsset, project_id: e.target.value || null })}
+                  >
+                    <option value="">Global SOT Brand</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Project Association</label>
-                <select
-                  className="select"
-                  value={newAsset.project_id || ''}
-                  onChange={e => setNewAsset({ ...newAsset, project_id: e.target.value || null })}
-                >
-                  <option value="">Global SOT Brand</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
+              {uploadProgress > 0 && (
+                <div style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', height: '8px', overflow: 'hidden' }}>
+                  <div style={{ width: `${uploadProgress}%`, background: 'var(--accent)', height: '100%', transition: 'width 0.2s' }} />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" className="btn btn-ghost" disabled={uploadProgress > 0} onClick={() => setIsUploading(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={!selectedFile || uploadProgress > 0}>
+                  <Check size={14} /> {uploadProgress > 0 ? `Uploading (${uploadProgress}%)...` : 'Upload Asset'}
+                </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Asset Preview Modal */}
+      {previewAsset && (
+        <div className="modal-overlay" onClick={() => setPreviewAsset(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', padding: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', paddingBottom: '10px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <div>
+                <h2 style={{ fontSize: '15px', fontWeight: 600 }}>{previewAsset.name}</h2>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                  <span className="badge badge-red">{previewAsset.type}</span>
+                  <span className="badge badge-outline">
+                    {projects.find(p => p.id === previewAsset.project_id)?.name || 'Global'}
+                  </span>
+                </div>
+              </div>
+              <button className="btn-ghost btn-sm" onClick={() => setPreviewAsset(null)}><X size={16} /></button>
             </div>
 
-            {uploadProgress > 0 && (
-              <div style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', height: '8px', overflow: 'hidden' }}>
-                <div style={{ width: `${uploadProgress}%`, background: 'var(--accent)', height: '100%', transition: 'width 0.2s' }} />
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button type="button" className="btn btn-ghost" onClick={() => setIsUploading(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary" disabled={!selectedFile}><Check size={14} /> Upload Asset</button>
+            <div style={{ background: '#0a0a0a', borderRadius: 'var(--radius-md)', padding: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', maxHeight: '60vh', overflow: 'hidden' }}>
+              <img
+                src={previewAsset.cloudinary_url}
+                alt={previewAsset.name}
+                style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain' }}
+              />
             </div>
-          </form>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+              <a
+                href={previewAsset.cloudinary_url}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-ghost btn-sm"
+              >
+                <ExternalLink size={13} /> Open Original in New Tab
+              </a>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => handleDownload(previewAsset)}
+              >
+                <Download size={13} /> Download Asset
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -207,7 +282,11 @@ export const AssetsPage: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         {filteredAssets.map(asset => (
           <div key={asset.id} className="card" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ height: '180px', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderBottom: '1px solid var(--border-color)' }}>
+            <div
+              style={{ height: '180px', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderBottom: '1px solid var(--border-color)', cursor: 'pointer', position: 'relative' }}
+              onClick={() => setPreviewAsset(asset)}
+              title="Click to preview"
+            >
               <img
                 src={asset.thumbnail_url || asset.cloudinary_url}
                 alt={asset.name}
@@ -227,16 +306,25 @@ export const AssetsPage: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', marginTop: '12px', paddingTop: '8px' }}>
-                <a
-                  href={asset.cloudinary_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-sm btn-ghost"
-                  style={{ fontSize: '11px', padding: '4px 6px' }}
-                  title="View Full Resolution"
-                >
-                  <ExternalLink size={12} /> <span className="hide-on-mobile-text">Full Res</span>
-                </a>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={() => handleDownload(asset)}
+                    className="btn btn-sm btn-ghost"
+                    style={{ fontSize: '11px', padding: '4px 8px' }}
+                    title="Download Asset File"
+                  >
+                    <Download size={13} style={{ color: 'var(--accent)' }} /> <span className="hide-on-mobile-text">Download</span>
+                  </button>
+
+                  <button
+                    onClick={() => setPreviewAsset(asset)}
+                    className="btn btn-sm btn-ghost"
+                    style={{ fontSize: '11px', padding: '4px 6px' }}
+                    title="Quick Preview"
+                  >
+                    <Eye size={13} />
+                  </button>
+                </div>
 
                 {canManage && (
                   <button
