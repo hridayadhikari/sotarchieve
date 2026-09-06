@@ -46,6 +46,7 @@ interface DataContextType {
   grantPermission: (userId: string, permission: Permission['permission'], resourceType: Permission['resource_type'], resourceId?: string | null) => Promise<void>;
   revokePermission: (permissionId: string) => Promise<void>;
   toggleMemberActive: (userId: string) => Promise<void>;
+  updateMember: (userId: string, updates: { full_name?: string; email?: string; role?: 'admin' | 'member'; is_active?: boolean }) => Promise<void>;
   createMember: (fullName: string, email: string, role: 'admin' | 'member', password?: string) => Promise<void>;
 }
 
@@ -575,6 +576,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('sot_profiles', JSON.stringify(updated));
   };
 
+  const updateMember = async (userId: string, updates: { full_name?: string; email?: string; role?: 'admin' | 'member'; is_active?: boolean }) => {
+    const target = profiles.find(p => p.id === userId);
+    if (!target) return;
+
+    const payload: any = { ...updates, updated_at: new Date().toISOString() };
+    if (payload.full_name) payload.full_name = payload.full_name.trim();
+    if (payload.email) payload.email = payload.email.trim();
+
+    if (isConfigured && isUUID(userId)) {
+      try {
+        const { error } = await supabase.from('profiles').update(payload).eq('id', userId);
+        if (error) console.error('Error updating profile in Supabase:', error);
+      } catch (err) {
+        console.error('Error in updateMember Supabase query:', err);
+      }
+    }
+
+    const updated = profiles.map(p => (p.id === userId ? { ...p, ...payload } : p));
+    setProfiles(updated);
+    localStorage.setItem('sot_profiles', JSON.stringify(updated));
+    logActivity('MEMBER_UPDATED', 'Member', userId, {
+      name: payload.full_name || target.full_name,
+      ...updates
+    });
+  };
+
   const createMember = async (fullName: string, email: string, role: 'admin' | 'member', password = 'password123') => {
     if (isConfigured) {
       try {
@@ -672,6 +699,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         grantPermission,
         revokePermission,
         toggleMemberActive,
+        updateMember,
         createMember
       }}
     >

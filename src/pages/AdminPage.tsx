@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { PermissionType, ResourceType } from '../types';
-import { ShieldAlert, UserPlus, Key, UserCheck, UserX, Trash2, Check, X, Shield, Clock } from 'lucide-react';
+import { PermissionType, ResourceType, Profile } from '../types';
+import { ShieldAlert, UserPlus, Key, UserCheck, Trash2, Check, X, Shield, Clock, Edit2 } from 'lucide-react';
 
 export const AdminPage: React.FC = () => {
-  const { profiles, permissions, projects, grantPermission, revokePermission, toggleMemberActive, createMember, activityLogs } = useData();
+  const { profiles, permissions, projects, grantPermission, revokePermission, toggleMemberActive, updateMember, createMember, activityLogs } = useData();
   const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'members' | 'permissions' | 'activity'>('permissions');
@@ -18,6 +18,13 @@ export const AdminPage: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<'member' | 'admin'>('member');
   const [createSuccessMsg, setCreateSuccessMsg] = useState<string | null>(null);
+
+  // Edit Member Modal Form
+  const [editingMember, setEditingMember] = useState<Profile | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState<'member' | 'admin'>('member');
+  const [editSuccessMsg, setEditSuccessMsg] = useState<string | null>(null);
 
   // New Permission assignment
   const [permType, setPermType] = useState<PermissionType>('EDIT');
@@ -58,6 +65,30 @@ export const AdminPage: React.FC = () => {
       setTimeout(() => setCreateSuccessMsg(null), 6000);
     } catch (err: any) {
       alert(`Error creating member: ${err.message || err}`);
+    }
+  };
+
+  const openEditModal = (member: Profile) => {
+    setEditingMember(member);
+    setEditFullName(member.full_name);
+    setEditEmail(member.email);
+    setEditRole(member.role);
+  };
+
+  const handleUpdateMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMember || !editFullName.trim() || !editEmail.trim()) return;
+    try {
+      await updateMember(editingMember.id, {
+        full_name: editFullName.trim(),
+        email: editEmail.trim(),
+        role: editRole
+      });
+      setEditSuccessMsg(`Member "${editFullName}" updated successfully!`);
+      setEditingMember(null);
+      setTimeout(() => setEditSuccessMsg(null), 5000);
+    } catch (err: any) {
+      alert(`Error updating member: ${err.message || err}`);
     }
   };
 
@@ -280,12 +311,80 @@ export const AdminPage: React.FC = () => {
             </div>
           )}
 
+          {editSuccessMsg && (
+            <div style={{ padding: '10px 14px', background: 'var(--sot-red-subtle)', border: '1px solid var(--accent)', borderRadius: 'var(--radius-md)', color: 'var(--accent)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Check size={16} /> {editSuccessMsg}
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: '16px' }}>Team Member Accounts</h2>
             <button className="btn btn-primary" onClick={() => setIsCreatingMember(true)} title="Add Team Member">
               <UserPlus size={14} /> <span className="hide-on-mobile-text">Add Team Member</span>
             </button>
           </div>
+
+          {/* Edit Member Modal */}
+          {editingMember && (
+            <div className="modal-overlay" style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+              padding: '16px'
+            }}>
+              <div className="modal-content card" style={{ maxWidth: '520px', width: '100%', padding: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Edit2 size={18} style={{ color: 'var(--accent)' }} />
+                    <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Edit Member: {editingMember.full_name}</h3>
+                  </div>
+                  <button className="btn-ghost btn-sm" onClick={() => setEditingMember(null)}><X size={16} /></button>
+                </div>
+
+                <form onSubmit={handleUpdateMember} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px' }}>Full Name</label>
+                    <input
+                      type="text"
+                      required
+                      className="input"
+                      value={editFullName}
+                      onChange={e => setEditFullName(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px' }}>Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      className="input"
+                      value={editEmail}
+                      onChange={e => setEditEmail(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px' }}>Role</label>
+                    <select className="select" value={editRole} onChange={e => setEditRole(e.target.value as any)}>
+                      <option value="member">Member (View default + custom permissions)</option>
+                      <option value="admin">Administrator (Full Access)</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+                    <button type="button" className="btn btn-ghost" onClick={() => setEditingMember(null)}>Cancel</button>
+                    <button type="submit" className="btn btn-primary"><Check size={14} /> Save Changes</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {isCreatingMember && (
             <div className="card">
@@ -375,15 +474,26 @@ export const AdminPage: React.FC = () => {
                       {new Date(p.created_at).toLocaleDateString()}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {p.id !== user?.id && (
+                      <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                         <button
                           className="btn btn-sm btn-ghost"
-                          onClick={() => toggleMemberActive(p.id)}
-                          style={{ color: p.is_active ? 'var(--accent)' : 'var(--text-primary)' }}
+                          onClick={() => openEditModal(p)}
+                          title="Edit Member"
+                          style={{ color: 'var(--text-primary)' }}
                         >
-                          {p.is_active ? 'Disable' : 'Restore'}
+                          <Edit2 size={13} />
+                          <span style={{ marginLeft: '4px' }}>Edit</span>
                         </button>
-                      )}
+                        {p.id !== user?.id && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => toggleMemberActive(p.id)}
+                            style={{ color: p.is_active ? 'var(--accent)' : 'var(--text-primary)' }}
+                          >
+                            {p.is_active ? 'Disable' : 'Restore'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -5,8 +5,8 @@ import { Lock, Mail, ArrowRight } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { login, mockProfiles } = useAuth();
-  const [email, setEmail] = useState('admin@streetsoftripura.in');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
