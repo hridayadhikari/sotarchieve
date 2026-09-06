@@ -35,7 +35,7 @@ export const DocumentsPage: React.FC = () => {
     return matchProj && matchCat;
   });
 
-  const canCreate = can('CREATE', 'documents');
+  const canCreate = can('CREATE', 'documents') || can('EDIT', 'documents') || can('MANAGE', 'documents');
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

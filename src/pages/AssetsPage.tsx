@@ -34,8 +34,10 @@ export const AssetsPage: React.FC = () => {
     return matchType && matchProj;
   });
 
-  // By default: Members -> VIEW only, Admin or explicitly granted members -> MANAGE
-  const canManage = can('MANAGE', 'assets');
+  // Users with CREATE, EDIT, or MANAGE can upload assets
+  const canCreate = can('CREATE', 'assets') || can('EDIT', 'assets') || can('MANAGE', 'assets');
+  // Users with DELETE or MANAGE can delete assets
+  const canDelete = can('DELETE', 'assets') || can('MANAGE', 'assets');
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,8 +82,8 @@ export const AssetsPage: React.FC = () => {
   };
 
   const handleDelete = (asset: AssetResource) => {
-    if (!canManage) {
-      alert('Only administrators or users with MANAGE permission can delete official assets.');
+    if (!canDelete) {
+      alert('Only administrators or users with DELETE/MANAGE permission can delete official assets.');
       return;
     }
     if (window.confirm(`Permanently delete official asset "${asset.name}"?`)) {
@@ -103,17 +105,17 @@ export const AssetsPage: React.FC = () => {
           </p>
         </div>
 
-        {canManage && (
+        {canCreate && (
           <button className="btn btn-primary" onClick={() => setIsUploading(true)} title="Upload Official Asset">
             <Upload size={14} /> <span className="hide-on-mobile-text">Upload Asset</span>
           </button>
         )}
       </div>
 
-      {!canManage && (
+      {!canCreate && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', fontSize: '12px', color: 'var(--text-secondary)' }}>
           <Shield size={14} style={{ color: 'var(--text-muted)' }} />
-          <span>You have <strong>VIEW ONLY</strong> access to official brand assets. Uploading and asset management is restricted to administrators.</span>
+          <span>You have <strong>VIEW ONLY</strong> access to official brand assets. Uploading and asset management is restricted to administrators and authorized members.</span>
         </div>
       )}
 
@@ -326,7 +328,7 @@ export const AssetsPage: React.FC = () => {
                   </button>
                 </div>
 
-                {canManage && (
+                {canDelete && (
                   <button
                     className="btn btn-sm btn-ghost"
                     onClick={() => handleDelete(asset)}
