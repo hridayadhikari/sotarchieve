@@ -9,6 +9,7 @@ import { formatDisplayName } from '../lib/formatName';
 interface AuthContextType {
   user: Profile | null;
   permissions: Permission[];
+  setPermissions: React.Dispatch<React.SetStateAction<Permission[]>>;
   isLoading: boolean;
   login: (email: string, password?: string, forceBypass?: boolean) => Promise<void>;
   logout: () => Promise<void>;
@@ -197,6 +198,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             setUser(normalizedProfile);
             localStorage.setItem('sot_user_session', JSON.stringify(normalizedProfile));
+
+            const { data: userPerms } = await supabase
+              .from('permissions')
+              .select('*')
+              .eq('user_id', profile.id);
+            setPermissions(userPerms || []);
           } else {
             // Profile doesn't exist yet: check metadata
             const cleanFullName = formatDisplayName(data.user.user_metadata?.full_name || data.user.user_metadata?.name, data.user.email, data.user.user_metadata);
@@ -205,7 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: data.user.email || email,
               full_name: cleanFullName,
               name: cleanFullName,
-              role: (data.user.user_metadata?.role as any) || 'admin',
+              role: (data.user.user_metadata?.role as any) || 'member',
               is_active: true,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
@@ -213,6 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await supabase.from('profiles').upsert([newProfile]);
             setUser(newProfile);
             localStorage.setItem('sot_user_session', JSON.stringify(newProfile));
+            setPermissions([]);
           }
         }
       } catch (authErr: any) {
@@ -235,6 +243,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setUser(normalized);
           localStorage.setItem('sot_user_session', JSON.stringify(normalized));
+
+          const { data: userPerms } = await supabase
+            .from('permissions')
+            .select('*')
+            .eq('user_id', dbProfile.id);
+          setPermissions(userPerms || []);
           return;
         }
 
@@ -243,24 +257,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const matched = allProfiles.find(p => p.email.toLowerCase() === email.toLowerCase().trim());
         if (matched) {
           setUser(matched);
-          setPermissions(initialPermissions.filter(p => p.user_id === matched.id));
+          const savedPerms = localStorage.getItem('sot_all_permissions');
+          const allP = savedPerms ? JSON.parse(savedPerms) : initialPermissions;
+          setPermissions(allP.filter((p: Permission) => p.user_id === matched.id));
           localStorage.setItem('sot_user_session', JSON.stringify(matched));
           return;
         }
 
-        // If email was created in session or custom email, create developer session with properly formatted full name
+        // If custom email, create session
         const cleanFullName = formatDisplayName(null, email.trim());
         const customProfile: Profile = {
           id: `usr-${Date.now()}`,
           email: email.trim(),
           full_name: cleanFullName,
           name: cleanFullName,
-          role: 'admin',
+          role: 'member',
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
         setUser(customProfile);
+        setPermissions([]);
         localStorage.setItem('sot_user_session', JSON.stringify(customProfile));
       }
     } finally {
@@ -299,6 +316,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         permissions,
+        setPermissions,
         isLoading,
         login,
         logout,

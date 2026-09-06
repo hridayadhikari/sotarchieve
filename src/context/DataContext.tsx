@@ -52,7 +52,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, setPermissions: setAuthPermissions } = useAuth();
   
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [knowledge, setKnowledge] = useState<KnowledgeArticle[]>(initialKnowledge);
@@ -87,6 +87,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const savedLogs = localStorage.getItem('sot_activity_logs');
       if (savedLogs) setActivityLogs(JSON.parse(savedLogs));
+
+      const savedPerms = localStorage.getItem('sot_all_permissions');
+      if (savedPerms) {
+        const parsed = JSON.parse(savedPerms);
+        setPermissions(parsed);
+        if (user) {
+          setAuthPermissions(parsed.filter((p: Permission) => p.user_id === user.id));
+        }
+      }
       return;
     }
 
@@ -140,7 +149,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         setProfiles(normalized);
       }
-      if (permRes.data && permRes.data.length > 0) setPermissions(permRes.data);
+      if (permRes.data) {
+        setPermissions(permRes.data);
+        if (user) {
+          const userMatchingPerms = permRes.data.filter((p: Permission) => p.user_id === user.id);
+          setAuthPermissions(userMatchingPerms);
+        }
+      }
       if (actRes.data && actRes.data.length > 0) setActivityLogs(actRes.data);
     } catch (err) {
       console.warn('Supabase fetch error, fallback active:', err);
@@ -480,15 +495,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const grantPermission = async (userId: string, permission: Permission['permission'], resourceType: Permission['resource_type'], resourceId?: string | null) => {
     const targetMember = profiles.find(p => p.id === userId);
     if (isConfigured && user) {
-      const { data } = await supabase.from('permissions').insert([{
-        user_id: userId,
+      const { data, error } = await supabase.from('permissions').insert([{
+        user_id: isUUID(userId) ? userId : null,
         permission,
         resource_type: resourceType,
-        resource_id: resourceId || null,
-        granted_by: user.id
+        resource_id: isUUID(resourceId) ? resourceId : null,
+        granted_by: isUUID(user.id) ? user.id : null
       }]).select().single();
-      if (data) {
+
+      if (error) {
+        console.error('[Supabase Insert Error: permissions]', error);
+      } else if (data) {
         setPermissions(prev => [...prev, data]);
+        if (user && user.id === userId) {
+          setAuthPermissions(prev => [...prev, data]);
+        }
         logActivity('PERMISSION_CHANGED', 'Permission', data.id, {
           member: targetMember?.full_name,
           permission,
@@ -509,6 +530,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const updated = [...permissions, newPerm];
     setPermissions(updated);
+    if (user && user.id === userId) {
+      setAuthPermissions(prev => [...prev, newPerm]);
+    }
     localStorage.setItem('sot_all_permissions', JSON.stringify(updated));
     logActivity('PERMISSION_CHANGED', 'Permission', newPerm.id, {
       member: targetMember?.full_name,
@@ -522,10 +546,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const perm = permissions.find(p => p.id === permissionId);
     const targetMember = profiles.find(p => p.id === perm?.user_id);
     if (isConfigured) {
-      await supabase.from('permissions').delete().eq('id', permissionId);
+      const { error } = await supabase.from('permissions').delete().eq('id', permissionId);
+      if (error) console.error('[Supabase Delete Error: permissions]', error);
     }
     const updated = permissions.filter(p => p.id !== permissionId);
     setPermissions(updated);
+    if (user && perm && perm.user_id === user.id) {
+      setAuthPermissions(prev => prev.filter(p => p.id !== permissionId));
+    }
     localStorage.setItem('sot_all_permissions', JSON.stringify(updated));
     logActivity('PERMISSION_CHANGED', 'Permission', permissionId, {
       description: `Revoked ${perm?.permission} permission from ${targetMember?.full_name}`
