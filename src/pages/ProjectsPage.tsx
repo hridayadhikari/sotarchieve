@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Project } from '../types';
-import { Layers, Plus, Calendar, FileText, Link2, Image, BookOpen, ExternalLink, Check, X } from 'lucide-react';
+import { ActionModal, ModalType } from '../components/ActionModal';
+import { Layers, Plus, Calendar, FileText, Link2, Image, BookOpen, Check, X, Trash2 } from 'lucide-react';
 
 export const ProjectsPage: React.FC = () => {
   const { id } = useParams<{ id?: string }>();
-  const { projects, knowledge, meetings, documents, links, assets, addProject, updateProject } = useData();
-  const { can } = useAuth();
+  const navigate = useNavigate();
+  const { projects, knowledge, meetings, documents, links, assets, addProject, deleteProject } = useData();
+  const { can, user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'knowledge' | 'meetings' | 'documents' | 'links' | 'assets'>('overview');
   const [isCreating, setIsCreating] = useState(false);
@@ -19,7 +21,67 @@ export const ProjectsPage: React.FC = () => {
     start_date: new Date().toISOString().split('T')[0]
   });
 
+  const [actionModal, setActionModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: React.ReactNode;
+    type: ModalType;
+    confirmLabel?: string;
+    onConfirm?: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
+
+  const isAdmin = user?.role === 'admin';
   const canCreate = can('CREATE', 'project');
+
+  const handleDeleteProject = (proj: Project) => {
+    if (!isAdmin) {
+      setActionModal({
+        isOpen: true,
+        title: 'Admin Access Required',
+        message: 'Only system administrators can delete projects.',
+        type: 'danger'
+      });
+      return;
+    }
+
+    setActionModal({
+      isOpen: true,
+      title: 'Delete Project Workspace',
+      message: (
+        <span>
+          Are you sure you want to permanently delete the project <strong>"{proj.name}"</strong>? This will remove all project workspace associations.
+        </span>
+      ),
+      type: 'danger',
+      confirmLabel: 'Delete Project',
+      onConfirm: async () => {
+        try {
+          await deleteProject(proj.id);
+          if (id === proj.id) {
+            navigate('/projects');
+          }
+          setActionModal({
+            isOpen: true,
+            title: 'Project Deleted',
+            message: `Project "${proj.name}" has been permanently deleted.`,
+            type: 'info'
+          });
+        } catch (err: any) {
+          setActionModal({
+            isOpen: true,
+            title: 'Deletion Failed',
+            message: err.message || 'Could not delete project.',
+            type: 'danger'
+          });
+        }
+      }
+    });
+  };
 
   // Single Project View
   if (id) {
@@ -49,11 +111,24 @@ export const ProjectsPage: React.FC = () => {
               <span style={{ color: 'var(--border-color)' }}>/</span>
               <span className="badge badge-red">{project.status}</span>
             </div>
-            {project.start_date && (
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                Timeline: {project.start_date} {project.end_date ? `— ${project.end_date}` : ''}
-              </span>
-            )}
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {project.start_date && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  Timeline: {project.start_date} {project.end_date ? `— ${project.end_date}` : ''}
+                </span>
+              )}
+              {isAdmin && (
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => handleDeleteProject(project)}
+                  style={{ color: 'var(--accent)', gap: '4px' }}
+                  title="Delete Project (Admins Only)"
+                >
+                  <Trash2 size={13} /> <span className="hide-on-mobile-text">Delete Project</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <h1 style={{ fontSize: '24px', fontWeight: 700 }}>{project.name}</h1>
@@ -87,6 +162,7 @@ export const ProjectsPage: React.FC = () => {
             })}
           </div>
         </div>
+
 
         {/* Tab Content Panes */}
         {activeTab === 'overview' && (
@@ -212,6 +288,17 @@ export const ProjectsPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Reusable Action / Confirmation Modal for Project View */}
+        <ActionModal
+          isOpen={actionModal.isOpen}
+          onClose={() => setActionModal(prev => ({ ...prev, isOpen: false }))}
+          onConfirm={actionModal.onConfirm}
+          title={actionModal.title}
+          message={actionModal.message}
+          type={actionModal.type}
+          confirmLabel={actionModal.confirmLabel}
+        />
       </div>
     );
   }
@@ -227,8 +314,16 @@ export const ProjectsPage: React.FC = () => {
       start_date: newProject.start_date,
       end_date: newProject.end_date
     });
+    const savedName = newProject.name;
     setIsCreating(false);
     setNewProject({ name: '', description: '', status: 'active', start_date: new Date().toISOString().split('T')[0] });
+
+    setActionModal({
+      isOpen: true,
+      title: 'Project Created',
+      message: `Workspace "${savedName}" has been established.`,
+      type: 'success'
+    });
   };
 
   return (
@@ -334,45 +429,78 @@ export const ProjectsPage: React.FC = () => {
           const pLinksCount = links.filter(l => l.project_id === p.id).length;
 
           return (
-            <Link
+            <div
               key={p.id}
-              to={`/projects/${p.id}`}
               className="card"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
                 transition: 'border-color var(--transition-fast)',
+                position: 'relative'
               }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--text-primary)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-color)'}
             >
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <span className="badge badge-red">{p.status}</span>
-                  {p.start_date && (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      {p.start_date}
-                    </span>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {p.start_date && (
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        {p.start_date}
+                      </span>
+                    )}
+                    {isAdmin && (
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        style={{ padding: '2px 6px', color: 'var(--accent)' }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteProject(p);
+                        }}
+                        title="Delete Project (Admin Only)"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <h2 style={{ fontSize: '16px', fontWeight: 600 }}>{p.name}</h2>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>
-                  {p.description}
-                </p>
+                <Link to={`/projects/${p.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <h2 style={{ fontSize: '16px', fontWeight: 600 }}>{p.name}</h2>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>
+                    {p.description}
+                  </p>
+                </Link>
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid var(--border-subtle)', marginTop: '16px', paddingTop: '10px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                <span>{pKnowledgeCount} Docs</span>
-                <span>{pMeetingsCount} Meetings</span>
-                <span>{pDocsCount} Files</span>
-                <span>{pLinksCount} Links</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', marginTop: '16px', paddingTop: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <span>{pKnowledgeCount} Docs</span>
+                  <span>{pMeetingsCount} Meets</span>
+                  <span>{pDocsCount} Files</span>
+                  <span>{pLinksCount} Links</span>
+                </div>
+                <Link to={`/projects/${p.id}`} className="btn btn-sm btn-ghost" style={{ fontSize: '11px', padding: '2px 8px' }}>
+                  View &rarr;
+                </Link>
               </div>
-            </Link>
+            </div>
           );
         })}
       </div>
+
+      {/* Reusable Action / Confirmation Modal */}
+      <ActionModal
+        isOpen={actionModal.isOpen}
+        onClose={() => setActionModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={actionModal.onConfirm}
+        title={actionModal.title}
+        message={actionModal.message}
+        type={actionModal.type}
+        confirmLabel={actionModal.confirmLabel}
+      />
     </div>
   );
 };
+

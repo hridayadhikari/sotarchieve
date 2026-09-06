@@ -6,21 +6,33 @@ import { KnowledgeArticle } from '../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BookOpen, Plus, Edit2, Trash2, Search, X, Check, ArrowLeft } from 'lucide-react';
+import { ActionModal, ModalType } from '../components/ActionModal';
 
 export const KnowledgeBasePage: React.FC = () => {
   const { knowledge, projects, addKnowledge, updateKnowledge, deleteKnowledge } = useData();
-  const { can, user } = useAuth();
+  const { can } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   
   const selectedId = searchParams.get('id');
-  const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   
   // Editor State
   const [isEditing, setIsEditing] = useState(false);
   const [editingArticle, setEditingArticle] = useState<Partial<KnowledgeArticle> | null>(null);
 
-  const categories = ['ALL', ...Array.from(new Set(knowledge.map(k => k.category)))];
+  const [actionModal, setActionModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: React.ReactNode;
+    type: ModalType;
+    confirmLabel?: string;
+    onConfirm?: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   const filteredArticles = knowledge.filter(k => {
     const matchesSearch = !searchQuery || 
@@ -69,16 +81,52 @@ export const KnowledgeBasePage: React.FC = () => {
         tags: typeof editingArticle.tags === 'string' ? (editingArticle.tags as string).split(',').map((s: string) => s.trim()) : editingArticle.tags || [],
       });
     }
+    const savedTitle = editingArticle.title;
     setIsEditing(false);
     setEditingArticle(null);
+
+    setActionModal({
+      isOpen: true,
+      title: 'Article Saved',
+      message: `"${savedTitle}" has been saved to the Knowledge Base.`,
+      type: 'success'
+    });
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this knowledge article?')) {
-      deleteKnowledge(id);
-      if (selectedId === id) setSearchParams({});
-    }
+    const target = knowledge.find(k => k.id === id);
+    setActionModal({
+      isOpen: true,
+      title: 'Delete Knowledge Article',
+      message: (
+        <span>
+          Are you sure you want to delete <strong>"{target?.title || 'this article'}"</strong>? This will permanently remove it from the knowledge repository.
+        </span>
+      ),
+      type: 'danger',
+      confirmLabel: 'Delete Article',
+      onConfirm: async () => {
+        try {
+          await deleteKnowledge(id);
+          if (selectedId === id) setSearchParams({});
+          setActionModal({
+            isOpen: true,
+            title: 'Article Deleted',
+            message: `The article has been removed.`,
+            type: 'info'
+          });
+        } catch (err: any) {
+          setActionModal({
+            isOpen: true,
+            title: 'Delete Failed',
+            message: err.message || 'Could not delete article.',
+            type: 'danger'
+          });
+        }
+      }
+    });
   };
+
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -294,6 +342,18 @@ export const KnowledgeBasePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Reusable Action / Feedback Modal */}
+      <ActionModal
+        isOpen={actionModal.isOpen}
+        onClose={() => setActionModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={actionModal.onConfirm}
+        title={actionModal.title}
+        message={actionModal.message}
+        type={actionModal.type}
+        confirmLabel={actionModal.confirmLabel}
+      />
     </div>
   );
 };
+

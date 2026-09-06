@@ -2,18 +2,48 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { LinkResource, LinkCategory } from '../types';
-import { Link2, Plus, ExternalLink, Trash2, Copy, Check, X } from 'lucide-react';
+import { Link2, Plus, ExternalLink, Trash2, Copy, Check, X, Edit2 } from 'lucide-react';
+import { ActionModal, ModalType } from '../components/ActionModal';
 
 export const LinksPage: React.FC = () => {
-  const { links, projects, addLink, deleteLink } = useData();
+  const { links, projects, addLink, updateLink, deleteLink } = useData();
   const { can } = useAuth();
 
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [filterProject, setFilterProject] = useState<string>('ALL');
   const [isCreating, setIsCreating] = useState(false);
+  const [editingLink, setEditingLink] = useState<LinkResource | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const [actionModal, setActionModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: React.ReactNode;
+    type: ModalType;
+    confirmLabel?: string;
+    onConfirm?: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
+
   const [newLink, setNewLink] = useState<{
+    title: string;
+    description: string;
+    url: string;
+    category: LinkCategory;
+    project_id: string | null;
+  }>({
+    title: '',
+    description: '',
+    url: '',
+    category: 'Canva',
+    project_id: null
+  });
+
+  const [editFormData, setEditFormData] = useState<{
     title: string;
     description: string;
     url: string;
@@ -55,18 +85,111 @@ export const LinksPage: React.FC = () => {
       project_id: newLink.project_id || null
     });
 
+    const savedTitle = newLink.title;
     setIsCreating(false);
     setNewLink({ title: '', description: '', url: '', category: 'Canva', project_id: null });
+
+    setActionModal({
+      isOpen: true,
+      title: 'Link Added Successfully',
+      message: `"${savedTitle}" has been saved to external resources.`,
+      type: 'success'
+    });
+  };
+
+  const handleStartEdit = (link: LinkResource) => {
+    if (!can('EDIT', 'links', link.project_id)) {
+      setActionModal({
+        isOpen: true,
+        title: 'Access Denied',
+        message: 'You do not have permission to edit this link.',
+        type: 'danger'
+      });
+      return;
+    }
+
+    setEditingLink(link);
+    setEditFormData({
+      title: link.title,
+      description: link.description || '',
+      url: link.url,
+      category: link.category,
+      project_id: link.project_id || null
+    });
+  };
+
+  const handleUpdateSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLink || !editFormData.title || !editFormData.url) return;
+
+    try {
+      await updateLink(editingLink.id, {
+        title: editFormData.title.trim(),
+        description: editFormData.description.trim(),
+        url: editFormData.url.trim(),
+        category: editFormData.category,
+        project_id: editFormData.project_id || null
+      });
+
+      const updatedTitle = editFormData.title;
+      setEditingLink(null);
+
+      setActionModal({
+        isOpen: true,
+        title: 'Link Updated',
+        message: `"${updatedTitle}" has been updated successfully.`,
+        type: 'success'
+      });
+    } catch (err: any) {
+      setActionModal({
+        isOpen: true,
+        title: 'Update Failed',
+        message: err.message || 'Could not update link.',
+        type: 'danger'
+      });
+    }
   };
 
   const handleDelete = (link: LinkResource) => {
     if (!can('DELETE', 'links', link.project_id)) {
-      alert('You do not have permission to delete this link.');
+      setActionModal({
+        isOpen: true,
+        title: 'Access Denied',
+        message: 'You do not have permission to delete this link.',
+        type: 'danger'
+      });
       return;
     }
-    if (window.confirm(`Delete link "${link.title}"?`)) {
-      deleteLink(link.id);
-    }
+
+    setActionModal({
+      isOpen: true,
+      title: 'Delete External Link',
+      message: (
+        <span>
+          Are you sure you want to delete <strong>"{link.title}"</strong>?
+        </span>
+      ),
+      type: 'danger',
+      confirmLabel: 'Delete Link',
+      onConfirm: async () => {
+        try {
+          await deleteLink(link.id);
+          setActionModal({
+            isOpen: true,
+            title: 'Link Deleted',
+            message: `"${link.title}" has been deleted.`,
+            type: 'info'
+          });
+        } catch (err: any) {
+          setActionModal({
+            isOpen: true,
+            title: 'Delete Failed',
+            message: err.message || 'Could not delete link.',
+            type: 'danger'
+          });
+        }
+      }
+    });
   };
 
   return (
@@ -215,6 +338,15 @@ export const LinksPage: React.FC = () => {
                 >
                   {copiedId === link.id ? <Check size={13} style={{ color: 'var(--accent)' }} /> : <Copy size={13} />}
                 </button>
+                {can('EDIT', 'links', link.project_id) && (
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => handleStartEdit(link)}
+                    title="Edit Link"
+                  >
+                    <Edit2 size={13} />
+                  </button>
+                )}
                 {can('DELETE', 'links', link.project_id) && (
                   <button
                     className="btn btn-sm btn-ghost"
@@ -239,6 +371,106 @@ export const LinksPage: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Edit Link Modal */}
+      {editingLink && (
+        <div className="modal-overlay" onClick={() => setEditingLink(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', width: '100%', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit2 size={16} style={{ color: 'var(--accent)' }} />
+                <h2 style={{ fontSize: '16px', fontWeight: 600 }}>Edit External Resource Link</h2>
+              </div>
+              <button className="btn btn-sm btn-ghost" onClick={() => setEditingLink(null)}>
+                <X size={14} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateSave} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Link Title</label>
+                <input
+                  type="text"
+                  required
+                  className="input"
+                  value={editFormData.title}
+                  onChange={e => setEditFormData({ ...editFormData, title: e.target.value })}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Service / Category</label>
+                  <select
+                    className="select"
+                    value={editFormData.category}
+                    onChange={e => setEditFormData({ ...editFormData, category: e.target.value as any })}
+                  >
+                    <option value="Canva">Canva</option>
+                    <option value="Google Drive">Google Drive</option>
+                    <option value="Google Forms">Google Forms</option>
+                    <option value="Google Docs">Google Docs</option>
+                    <option value="Social">Social Media</option>
+                    <option value="Other">Other Resource</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Project Association</label>
+                  <select
+                    className="select"
+                    value={editFormData.project_id || ''}
+                    onChange={e => setEditFormData({ ...editFormData, project_id: e.target.value || null })}
+                  >
+                    <option value="">Global / SOT Wide</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Destination URL</label>
+                <input
+                  type="url"
+                  required
+                  className="input"
+                  value={editFormData.url}
+                  onChange={e => setEditFormData({ ...editFormData, url: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>Description</label>
+                <textarea
+                  rows={2}
+                  className="textarea"
+                  value={editFormData.description}
+                  onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setEditingLink(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary"><Check size={14} /> Update Link</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reusable Action / Feedback Modal */}
+      <ActionModal
+        isOpen={actionModal.isOpen}
+        onClose={() => setActionModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={actionModal.onConfirm}
+        title={actionModal.title}
+        message={actionModal.message}
+        type={actionModal.type}
+        confirmLabel={actionModal.confirmLabel}
+      />
     </div>
   );
 };
+

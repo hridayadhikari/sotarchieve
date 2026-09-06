@@ -145,7 +145,18 @@ export const DashboardPage: React.FC = () => {
                   <Link to={`/meetings?id=${meet.id}`} style={{ fontWeight: 600, fontSize: '13px' }}>
                     {meet.title}
                   </Link>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{meet.date}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{meet.date}</span>
+                    <Link
+                      to={`/meetings/${meet.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                      title="Open full standalone page in new tab"
+                    >
+                      <ArrowUpRight size={13} />
+                    </Link>
+                  </div>
                 </div>
                 
                 {/* Action Items preview */}
@@ -226,42 +237,94 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Recent Activity Log */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Clock size={16} style={{ color: 'var(--text-secondary)' }} />
-              <h2 style={{ fontSize: '14px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recent Team Activity</h2>
+        {/* Admin-only Activity Log or Member Recent Documents */}
+        {user?.role === 'admin' ? (
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={16} style={{ color: 'var(--text-secondary)' }} />
+                <h2 style={{ fontSize: '14px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Admin Activity Log</h2>
+              </div>
+              <Link to="/admin" style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 500 }}>
+                Audit Trail &rarr;
+              </Link>
             </div>
-          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {activityLogs.slice(0, 5).map(log => (
-              <div
-                key={log.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: 'space-between',
-                  fontSize: '12px',
-                  paddingBottom: '8px',
-                  borderBottom: '1px solid var(--border-subtle)'
-                }}
-              >
-                <div>
-                  <span style={{ fontWeight: 600 }}>{log.actor?.full_name || 'System Member'}</span>{' '}
-                  <span style={{ color: 'var(--text-secondary)' }}>
-                    {log.action.toLowerCase()} {log.target_type}: {log.details?.name || log.details?.title || log.details?.description || ''}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {activityLogs.slice(0, 5).map(log => (
+                <div
+                  key={log.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    fontSize: '12px',
+                    paddingBottom: '8px',
+                    borderBottom: '1px solid var(--border-subtle)'
+                  }}
+                >
+                  <div>
+                    <span style={{ fontWeight: 600 }}>{log.actor?.full_name || log.details?.deleted_by_admin || 'System Admin'}</span>{' '}
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {log.action.toLowerCase()} {log.target_type}: {log.details?.name || log.details?.title || log.details?.description || ''}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                    {new Date(log.created_at).toLocaleDateString()}
                   </span>
                 </div>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap', marginLeft: '12px' }}>
-                  {new Date(log.created_at).toLocaleDateString()}
-                </span>
-              </div>
-            ))}
+              ))}
+              {activityLogs.length === 0 && (
+                <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>No recent activity.</div>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileText size={16} style={{ color: 'var(--accent)' }} />
+                <h2 style={{ fontSize: '14px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recent Documents</h2>
+              </div>
+              <Link to="/documents" style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 500 }}>
+                All Documents &rarr;
+              </Link>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {recentDocs.map(d => (
+                <a
+                  key={d.id}
+                  href={d.file_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    background: 'var(--bg-secondary)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-subtle)'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: '13px' }}>{d.title}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{d.category}</div>
+                  </div>
+                  <span className="badge badge-outline" style={{ fontSize: '10px' }}>
+                    {d.file_size ? `${(d.file_size / (1024 * 1024)).toFixed(2)} MB` : 'PDF'}
+                  </span>
+                </a>
+              ))}
+              {recentDocs.length === 0 && (
+                <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>No documents uploaded yet.</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+

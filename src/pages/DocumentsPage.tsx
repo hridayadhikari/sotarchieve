@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { DocumentResource } from '../types';
-import { uploadToCloudinary } from '../lib/cloudinary';
-import { FileText, Plus, Upload, Trash2, Download, ExternalLink, X, Check } from 'lucide-react';
+import { uploadToSupabaseStorage, MAX_DOCUMENT_SIZE_BYTES } from '../lib/supabase';
+import { ActionModal, ModalType } from '../components/ActionModal';
+import { FileText, Upload, Trash2, Download, ExternalLink, X, Check, AlertCircle } from 'lucide-react';
 
 export const DocumentsPage: React.FC = () => {
   const { documents, projects, addDocument, deleteDocument } = useData();
@@ -14,6 +15,22 @@ export const DocumentsPage: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  // Reusable ActionModal state for delete confirmation, feedback, errors
+  const [actionModal, setActionModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: React.ReactNode;
+    type: ModalType;
+    confirmLabel?: string;
+    onConfirm?: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
   
   const [newDoc, setNewDoc] = useState<{
     title: string;
@@ -37,27 +54,72 @@ export const DocumentsPage: React.FC = () => {
 
   const canCreate = can('CREATE', 'documents') || can('EDIT', 'documents') || can('MANAGE', 'documents');
 
+  const handleFileChange = (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+      setFileError(`Selected file is ${sizeMb} MB. Maximum allowed size is 5.00 MB.`);
+      setSelectedFile(null);
+      setActionModal({
+        isOpen: true,
+        title: 'File Size Limit Exceeded',
+        message: `The selected file "${file.name}" is ${sizeMb} MB. Only files up to 5 MB can be uploaded.`,
+        type: 'warning'
+      });
+      return;
+    }
+    setFileError(null);
+    setSelectedFile(file);
+    if (!newDoc.title) {
+      setNewDoc(prev => ({ ...prev, title: file.name.replace(/\.[^/.]+$/, "") }));
+    }
+  };
+
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile || !newDoc.title) return;
 
+    if (selectedFile.size > MAX_DOCUMENT_SIZE_BYTES) {
+      setFileError(`File size exceeds 5MB limit.`);
+      return;
+    }
+
     try {
-      const result = await uploadToCloudinary(selectedFile, 'documents', (p) => setUploadProgress(p));
+      setUploadProgress(40);
+      const result = await uploadToSupabaseStorage(selectedFile, 'documents');
+      setUploadProgress(80);
       await addDocument({
         title: newDoc.title,
         description: newDoc.description,
         category: newDoc.category,
         project_id: newDoc.project_id || null,
-        file_url: result.secure_url,
-        file_type: selectedFile.type || 'application/octet-stream',
-        file_size: selectedFile.size
+        file_url: result.file_url,
+        file_type: result.file_type,
+        file_size: result.file_size
       });
+      setUploadProgress(100);
       setIsUploading(false);
       setSelectedFile(null);
       setUploadProgress(0);
+      setFileError(null);
+      const uploadedTitle = newDoc.title;
       setNewDoc({ title: '', description: '', category: 'General', project_id: null });
+
+      // Show sleek success modal
+      setActionModal({
+        isOpen: true,
+        title: 'Document Uploaded Successfully',
+        message: `"${uploadedTitle}" has been securely uploaded to Supabase Storage and added to the archive.`,
+        type: 'success'
+      });
     } catch (err: any) {
-      alert('Upload failed: ' + err.message);
+      setUploadProgress(0);
+      setActionModal({
+        isOpen: true,
+        title: 'Upload Failed',
+        message: err.message || 'An error occurred while uploading the document.',
+        type: 'danger'
+      });
     }
   };
 
@@ -69,7 +131,7 @@ export const DocumentsPage: React.FC = () => {
       const link = document.createElement('a');
       link.href = blobUrl;
       const fileExt = doc.file_url.split('.').pop()?.split('?')[0] || 'pdf';
-      link.download = `${doc.title.replace(/[^a-z0-9_\-]/gi, '_')}.${fileExt}`;
+      link.download = `${doc.title.replace(/[^a-z0-9_-]/gi, '_')}.${fileExt}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -81,13 +143,46 @@ export const DocumentsPage: React.FC = () => {
 
   const handleDelete = (doc: DocumentResource) => {
     if (!can('DELETE', 'documents', doc.project_id)) {
-      alert('You do not have permission to delete this document.');
+      setActionModal({
+        isOpen: true,
+        title: 'Access Denied',
+        message: 'You do not have permission to delete this document.',
+        type: 'danger'
+      });
       return;
     }
-    if (window.confirm(`Delete document "${doc.title}"?`)) {
-      deleteDocument(doc.id);
-    }
+
+    setActionModal({
+      isOpen: true,
+      title: 'Delete Document',
+      message: (
+        <span>
+          Are you sure you want to delete <strong>"{doc.title}"</strong>? This will remove the document reference from the archive permanently.
+        </span>
+      ),
+      type: 'danger',
+      confirmLabel: 'Delete Document',
+      onConfirm: async () => {
+        try {
+          await deleteDocument(doc.id);
+          setActionModal({
+            isOpen: true,
+            title: 'Document Deleted',
+            message: `"${doc.title}" has been removed from the archive.`,
+            type: 'info'
+          });
+        } catch (err: any) {
+          setActionModal({
+            isOpen: true,
+            title: 'Deletion Failed',
+            message: err.message || 'Could not delete document.',
+            type: 'danger'
+          });
+        }
+      }
+    });
   };
+
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -99,12 +194,12 @@ export const DocumentsPage: React.FC = () => {
             <h1 style={{ fontSize: '20px', fontWeight: 700 }}>Documents & Files</h1>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
-            Central repository for PDFs, calibration sheets, MoUs, and Markdown files stored in Cloudinary.
+            Central repository for PDFs, MoUs, calibration sheets, and documentation stored in Supabase Storage (Max 5 MB / file).
           </p>
         </div>
 
         {canCreate && (
-          <button className="btn btn-primary" onClick={() => setIsUploading(true)} title="Upload Document">
+          <button className="btn btn-primary" onClick={() => { setFileError(null); setIsUploading(true); }} title="Upload Document">
             <Upload size={14} /> <span className="hide-on-mobile-text">Upload Document</span>
           </button>
         )}
@@ -117,7 +212,7 @@ export const DocumentsPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', paddingBottom: '12px', borderBottom: '1px solid var(--border-subtle)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Upload size={18} style={{ color: 'var(--accent)' }} />
-                <h2 style={{ fontSize: '16px', fontWeight: 600 }}>Upload Document to Cloudinary</h2>
+                <h2 style={{ fontSize: '16px', fontWeight: 600 }}>Upload Document to Supabase Storage</h2>
               </div>
               <button className="btn-ghost btn-sm" onClick={() => !uploadProgress && setIsUploading(false)}>
                 <X size={16} />
@@ -125,30 +220,33 @@ export const DocumentsPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleUploadSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ border: '2px dashed var(--border-color)', padding: '28px 20px', textAlign: 'center', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
+              <div style={{ border: fileError ? '2px dashed #ef4444' : '2px dashed var(--border-color)', padding: '28px 20px', textAlign: 'center', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
                 <input
                   type="file"
                   required
                   id="doc-file-input"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f) {
-                      setSelectedFile(f);
-                      if (!newDoc.title) setNewDoc(prev => ({ ...prev, title: f.name.replace(/\.[^/.]+$/, "") }));
-                    }
-                  }}
+                  accept=".pdf,.doc,.docx,.txt,.md,application/pdf"
+                  onChange={e => handleFileChange(e.target.files?.[0])}
                   style={{ display: 'none' }}
                 />
                 <label htmlFor="doc-file-input" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                  <Upload size={28} style={{ color: 'var(--accent)' }} />
+                  <Upload size={28} style={{ color: fileError ? '#ef4444' : 'var(--accent)' }} />
                   <span style={{ fontSize: '13px', fontWeight: 500 }}>
-                    {selectedFile ? selectedFile.name : 'Choose PDF, Markdown, or document file'}
+                    {selectedFile ? selectedFile.name : 'Choose PDF or Document file (Max 5 MB)'}
                   </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : 'Direct secure upload to sot-archive/documents/'}
+                  <span style={{ fontSize: '11px', color: fileError ? '#ef4444' : 'var(--text-muted)' }}>
+                    {fileError ? fileError : (selectedFile ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB (Within 5 MB limit)` : 'Direct upload to Supabase bucket: documents/ (PDF, DOC, MD)')}
                   </span>
                 </label>
               </div>
+
+              {fileError && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', fontSize: '12px' }}>
+                  <AlertCircle size={14} />
+                  <span>{fileError}</span>
+                </div>
+              )}
+
 
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px' }}>
                 <div>
@@ -292,9 +390,24 @@ export const DocumentsPage: React.FC = () => {
                 </td>
               </tr>
             )}
+
+
           </tbody>
         </table>
       </div>
+
+      {/* Reusable Action / Feedback Modal */}
+      <ActionModal
+        isOpen={actionModal.isOpen}
+        onClose={() => setActionModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={actionModal.onConfirm}
+        title={actionModal.title}
+        message={actionModal.message}
+        type={actionModal.type}
+        confirmLabel={actionModal.confirmLabel}
+      />
     </div>
   );
 };
+
+

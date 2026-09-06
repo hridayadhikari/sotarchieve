@@ -3,11 +3,12 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { AssetResource, AssetType } from '../types';
 import { uploadToCloudinary } from '../lib/cloudinary';
+import { ActionModal, ModalType } from '../components/ActionModal';
 import { Image, Upload, Trash2, ExternalLink, Download, X, Check, Shield, Eye } from 'lucide-react';
 
 export const AssetsPage: React.FC = () => {
   const { assets, projects, addAsset, deleteAsset } = useData();
-  const { can, user } = useAuth();
+  const { can } = useAuth();
 
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterProject, setFilterProject] = useState<string>('ALL');
@@ -15,6 +16,20 @@ export const AssetsPage: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewAsset, setPreviewAsset] = useState<AssetResource | null>(null);
+
+  const [actionModal, setActionModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: React.ReactNode;
+    type: ModalType;
+    confirmLabel?: string;
+    onConfirm?: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   const [newAsset, setNewAsset] = useState<{
     name: string;
@@ -56,9 +71,23 @@ export const AssetsPage: React.FC = () => {
       setIsUploading(false);
       setSelectedFile(null);
       setUploadProgress(0);
+      const assetName = newAsset.name;
       setNewAsset({ name: '', type: 'Logo', project_id: null });
+
+      setActionModal({
+        isOpen: true,
+        title: 'Asset Uploaded Successfully',
+        message: `Official asset "${assetName}" is now available in the archive.`,
+        type: 'success'
+      });
     } catch (err: any) {
-      alert('Upload failed: ' + err.message);
+      setUploadProgress(0);
+      setActionModal({
+        isOpen: true,
+        title: 'Upload Failed',
+        message: err.message || 'Failed to upload asset.',
+        type: 'danger'
+      });
     }
   };
 
@@ -70,7 +99,7 @@ export const AssetsPage: React.FC = () => {
       const link = document.createElement('a');
       link.href = blobUrl;
       const fileExt = asset.cloudinary_url.split('.').pop()?.split('?')[0] || 'jpg';
-      link.download = `${asset.name.replace(/[^a-z0-9_\-]/gi, '_')}.${fileExt}`;
+      link.download = `${asset.name.replace(/[^a-z0-9_-]/gi, '_')}.${fileExt}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -83,13 +112,46 @@ export const AssetsPage: React.FC = () => {
 
   const handleDelete = (asset: AssetResource) => {
     if (!canDelete) {
-      alert('Only administrators or users with DELETE/MANAGE permission can delete official assets.');
+      setActionModal({
+        isOpen: true,
+        title: 'Permission Denied',
+        message: 'Only administrators or users with DELETE/MANAGE permission can delete official assets.',
+        type: 'danger'
+      });
       return;
     }
-    if (window.confirm(`Permanently delete official asset "${asset.name}"?`)) {
-      deleteAsset(asset.id);
-    }
+
+    setActionModal({
+      isOpen: true,
+      title: 'Delete Official Asset',
+      message: (
+        <span>
+          Are you sure you want to permanently delete official asset <strong>"{asset.name}"</strong>?
+        </span>
+      ),
+      type: 'danger',
+      confirmLabel: 'Delete Asset',
+      onConfirm: async () => {
+        try {
+          await deleteAsset(asset.id);
+          setActionModal({
+            isOpen: true,
+            title: 'Asset Deleted',
+            message: `"${asset.name}" has been removed from assets.`,
+            type: 'info'
+          });
+        } catch (err: any) {
+          setActionModal({
+            isOpen: true,
+            title: 'Delete Failed',
+            message: err.message || 'Could not delete asset.',
+            type: 'danger'
+          });
+        }
+      }
+    });
   };
+
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -342,6 +404,18 @@ export const AssetsPage: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Reusable Action / Feedback Modal */}
+      <ActionModal
+        isOpen={actionModal.isOpen}
+        onClose={() => setActionModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={actionModal.onConfirm}
+        title={actionModal.title}
+        message={actionModal.message}
+        type={actionModal.type}
+        confirmLabel={actionModal.confirmLabel}
+      />
     </div>
   );
 };
+

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Lock, Mail, ArrowRight } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, mockProfiles } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,19 +19,10 @@ export const LoginPage: React.FC = () => {
       await login(email, password);
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Verify credentials.');
+      setError(err.message || 'Authentication failed. Verify your Supabase credentials.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleInstantDemoLogin = (p: any) => {
-    login(p.email, 'password123', true);
-    navigate('/');
-  };
-
-  const handleQuickLogin = (selectedEmail: string) => {
-    setEmail(selectedEmail);
   };
 
   return (
@@ -78,9 +69,6 @@ export const LoginPage: React.FC = () => {
             }}
           >
             <div>{error}</div>
-            <div style={{ marginTop: '4px', fontSize: '11px', opacity: 0.9 }}>
-              Note: To sign in via Supabase Auth, make sure to add this user under <strong>Authentication &rarr; Users</strong> in your Supabase Dashboard, or click one of the quick accounts below for local preview.
-            </div>
           </div>
         )}
 
@@ -126,9 +114,10 @@ export const LoginPage: React.FC = () => {
         </form>
 
         <div style={{ marginTop: '20px', fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
-          Internal SOT archive. No public registration. Accounts managed by administrators only.
+          Internal SOT archive. Accounts are provisioned and authenticated via Supabase.
         </div>
       </div>
     </div>
   );
 };
+

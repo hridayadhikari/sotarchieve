@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Meeting, ActionItem } from '../types';
-import { Calendar, Plus, CheckCircle2, Circle, Edit2, Trash2, X, Check, Paperclip, User } from 'lucide-react';
+import { ActionModal, ModalType } from '../components/ActionModal';
+import { Calendar, Plus, CheckCircle2, Circle, Edit2, Trash2, X, Check, User, ExternalLink, Share2 } from 'lucide-react';
 
 export const MeetingsPage: React.FC = () => {
   const { meetings, projects, addMeeting, updateMeeting, deleteMeeting, toggleActionItem } = useData();
@@ -13,7 +14,30 @@ export const MeetingsPage: React.FC = () => {
   const selectedId = searchParams.get('id');
   const [filterProject, setFilterProject] = useState<string>('ALL');
   const [isEditing, setIsEditing] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   
+  const [actionModal, setActionModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: React.ReactNode;
+    type: ModalType;
+    confirmLabel?: string;
+    onConfirm?: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
+
+  const handleShareLink = (meetingId: string) => {
+    const shareableUrl = `${window.location.origin}/meetings/${meetingId}`;
+    navigator.clipboard.writeText(shareableUrl);
+    setCopiedId(meetingId);
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
+
   const [editingMeeting, setEditingMeeting] = useState<Partial<Meeting> | null>(null);
   const [newActionItemText, setNewActionItemText] = useState('');
   const [newActionItemAssignee, setNewActionItemAssignee] = useState('');
@@ -94,16 +118,52 @@ export const MeetingsPage: React.FC = () => {
         attachments: editingMeeting.attachments || []
       });
     }
+    const savedTitle = editingMeeting.title;
     setIsEditing(false);
     setEditingMeeting(null);
+
+    setActionModal({
+      isOpen: true,
+      title: 'Minutes Saved',
+      message: `Meeting minutes for "${savedTitle}" have been recorded.`,
+      type: 'success'
+    });
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Delete these meeting minutes permanently?')) {
-      deleteMeeting(id);
-      if (selectedId === id) setSearchParams({});
-    }
+    const target = meetings.find(m => m.id === id);
+    setActionModal({
+      isOpen: true,
+      title: 'Delete Meeting Minutes',
+      message: (
+        <span>
+          Are you sure you want to delete minutes for <strong>"{target?.title || 'this meeting'}"</strong>?
+        </span>
+      ),
+      type: 'danger',
+      confirmLabel: 'Delete Minutes',
+      onConfirm: async () => {
+        try {
+          await deleteMeeting(id);
+          if (selectedId === id) setSearchParams({});
+          setActionModal({
+            isOpen: true,
+            title: 'Meeting Minutes Deleted',
+            message: 'The meeting record has been removed.',
+            type: 'info'
+          });
+        } catch (err: any) {
+          setActionModal({
+            isOpen: true,
+            title: 'Delete Failed',
+            message: err.message || 'Could not delete meeting minutes.',
+            type: 'danger'
+          });
+        }
+      }
+    });
   };
+
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -352,7 +412,29 @@ export const MeetingsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => handleShareLink(activeMeeting.id)}
+                      title="Copy public shareable link"
+                      style={{ gap: '4px' }}
+                    >
+                      {copiedId === activeMeeting.id ? <Check size={13} style={{ color: 'var(--accent)' }} /> : <Share2 size={13} />}
+                      <span className="hide-on-mobile-text">{copiedId === activeMeeting.id ? 'Copied' : 'Share'}</span>
+                    </button>
+
+                    <Link
+                      to={`/meetings/${activeMeeting.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-sm btn-ghost"
+                      title="Open standalone document in new tab"
+                      style={{ gap: '4px' }}
+                    >
+                      <ExternalLink size={13} />
+                      <span className="hide-on-mobile-text">Open Page</span>
+                    </Link>
+
                     {canEdit && (
                       <button className="btn btn-sm" onClick={() => handleStartEdit(activeMeeting)} title="Edit Meeting">
                         <Edit2 size={13} /> <span className="hide-on-mobile-text">Edit</span>
@@ -364,6 +446,7 @@ export const MeetingsPage: React.FC = () => {
                       </button>
                     )}
                   </div>
+
                 </div>
 
                 {/* Meeting Body Scroll Viewport */}
@@ -475,6 +558,18 @@ export const MeetingsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Reusable Action / Feedback Modal */}
+      <ActionModal
+        isOpen={actionModal.isOpen}
+        onClose={() => setActionModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={actionModal.onConfirm}
+        title={actionModal.title}
+        message={actionModal.message}
+        type={actionModal.type}
+        confirmLabel={actionModal.confirmLabel}
+      />
     </div>
   );
 };
+

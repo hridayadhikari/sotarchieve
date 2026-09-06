@@ -285,6 +285,7 @@ tr:hover td {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow-modal);
+  padding: 24px;
 }
 
 @keyframes fadeIn {
@@ -573,5 +574,94 @@ tr:hover td {
   }
 }
 
+/* ==========================================================================
+   PRINT / PDF EXPORT STYLES (Clean Document Output)
+   ========================================================================== */
+@media print {
+  /* Hide all app chrome, sidebars, navigation bars, headers, and buttons */
+  nav,
+  header,
+  aside,
+  .sidebar,
+  .navbar,
+  .sot-no-print,
+  .sot-meeting-actions-bar,
+  .sot-kb-index-col,
+  .btn,
+  button {
+    display: none !important;
+  }
 
+  /* Reset body and layout to clean white background without viewport margins */
+  html, body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    line-height: 1.4 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
 
+  .sot-meeting-page-wrapper {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: auto !important;
+  }
+
+  /* Document card becomes pristine, flat page without shadows or outer border */
+  .sot-meeting-printable-doc,
+  .card {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Keep boxes clean with thin crisp borders and light tinted backgrounds */
+  div[style*="background: var(--bg-secondary)"],
+  div[style*="background: var(--sot-red-subtle)"] {
+    background: #F7F7F7 !important;
+    border: 1px solid #D0D0D0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .badge {
+    border: 1px solid #C5C2C2 !important;
+    color: #000000 !important;
+    background: #F4F4F4 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .badge-red {
+    background: #A10000 !important;
+    color: #FFFFFF !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Avoid page breaks inside sections */
+  h1, h2, h3 {
+    page-break-after: avoid;
+    break-after: avoid;
+    color: #000000 !important;
+  }
+
+  div {
+    page-break-inside: auto;
+  }
+
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+}

@@ -10,6 +10,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { MeetingsPage } from './pages/MeetingsPage';
+import { MeetingSinglePage } from './pages/MeetingSinglePage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { LinksPage } from './pages/LinksPage';
 import { AssetsPage } from './pages/AssetsPage';
@@ -47,6 +48,9 @@ export const App: React.FC = () => {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               
+              {/* Standalone Shareable Single Page for Meeting Minutes (Works with direct link / new tab) */}
+              <Route path="/meetings/:id" element={<MeetingSinglePage />} />
+
               {/* Authenticated Workspace App */}
               <Route
                 path="/"

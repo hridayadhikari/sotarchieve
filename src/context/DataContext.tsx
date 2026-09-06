@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Project, KnowledgeArticle, Meeting, DocumentResource, LinkResource, AssetResource, ActivityLog, Permission, Profile } from '../types';
-import { initialProjects, initialKnowledge, initialMeetings, initialDocuments, initialLinks, initialAssets, initialPermissions, mockProfileAdmin, mockProfileMember, mockProfileViewer } from '../mock/seedData';
+import { initialProjects, initialKnowledge, initialMeetings, initialDocuments, initialLinks, initialAssets, initialPermissions } from '../mock/seedData';
 import { useAuth } from './AuthContext';
 import { supabase, isConfigured } from '../lib/supabase';
 import { formatDisplayName } from '../lib/formatName';
@@ -21,9 +21,9 @@ interface DataContextType {
   profiles: Profile[];
   permissions: Permission[];
   
-  // Create / Update actions with automated activity logging
   addProject: (p: Omit<Project, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
   updateProject: (id: string, p: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
   
   addKnowledge: (k: Omit<KnowledgeArticle, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
   updateKnowledge: (id: string, k: Partial<KnowledgeArticle>) => Promise<void>;
@@ -38,6 +38,7 @@ interface DataContextType {
   deleteDocument: (id: string) => Promise<void>;
   
   addLink: (l: Omit<LinkResource, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  updateLink: (id: string, l: Partial<LinkResource>) => Promise<void>;
   deleteLink: (id: string) => Promise<void>;
   
   addAsset: (a: Omit<AssetResource, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
@@ -135,7 +136,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (pRes.data && pRes.data.length > 0) setProjects(pRes.data);
       if (kRes.data && kRes.data.length > 0) setKnowledge(kRes.data);
-      if (mRes.data && mRes.data.length > 0) setMeetings(mRes.data);
+      if (mRes.data) setMeetings(mRes.data);
       if (dRes.data && dRes.data.length > 0) setDocuments(dRes.data);
       if (lRes.data && lRes.data.length > 0) setLinks(lRes.data);
       if (aRes.data && aRes.data.length > 0) setAssets(aRes.data);
@@ -238,6 +239,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('sot_projects', JSON.stringify(updated));
     logActivity('UPDATED', 'Project', id, { ...p });
   };
+
+  const deleteProject = async (id: string) => {
+    const target = projects.find(p => p.id === id);
+    if (!target) return;
+
+    if (isConfigured && isUUID(id)) {
+      const { error } = await supabase.from('projects').delete().eq('id', id);
+      if (error) {
+        console.error('[Supabase Delete Error: projects]', error);
+        throw new Error(error.message || 'Failed to delete project from database.');
+      }
+    }
+
+    const updated = projects.filter(p => p.id !== id);
+    setProjects(updated);
+    localStorage.setItem('sot_projects', JSON.stringify(updated));
+
+    // Automated activity log with the admin's name and details
+    logActivity('DELETED_PROJECT', 'Project', id, {
+      project_name: target.name,
+      deleted_by_admin: user?.full_name || user?.email || 'Administrator',
+      admin_id: user?.id,
+      description: `Project "${target.name}" was permanently deleted by Admin ${user?.full_name || user?.email}`
+    });
+  };
+
 
   const addKnowledge = async (k: Omit<KnowledgeArticle, 'id' | 'created_at' | 'updated_at'>) => {
     if (isConfigured && user) {
@@ -441,6 +468,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logActivity('CREATED', 'Link', newLink.id, { title: newLink.title, category: newLink.category });
   };
 
+  const updateLink = async (id: string, l: Partial<LinkResource>) => {
+    const target = links.find(item => item.id === id);
+    if (isConfigured && isUUID(id)) {
+      const payload: any = { ...l, updated_at: new Date().toISOString() };
+      if (payload.project_id !== undefined) {
+        payload.project_id = isUUID(payload.project_id) ? payload.project_id : null;
+      }
+      const { error } = await supabase.from('links').update(payload).eq('id', id);
+      if (error) console.error('[Supabase Update Error: links]', error);
+    }
+    const updated = links.map(item => item.id === id ? { ...item, ...l, updated_at: new Date().toISOString() } : item);
+    setLinks(updated);
+    localStorage.setItem('sot_links', JSON.stringify(updated));
+    logActivity('EDITED', 'Link', id, { title: l.title || target?.title });
+  };
+
   const deleteLink = async (id: string) => {
     const target = links.find(l => l.id === id);
     if (isConfigured && isUUID(id)) {
@@ -610,6 +653,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: email.trim(),
           password: password,
           options: {
+            emailRedirectTo: 'https://archive.streetsoftripura.in/',
             data: {
               full_name: fullName.trim(),
               role: role
@@ -683,6 +727,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         permissions,
         addProject,
         updateProject,
+        deleteProject,
         addKnowledge,
         updateKnowledge,
         deleteKnowledge,
@@ -693,6 +738,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addDocument,
         deleteDocument,
         addLink,
+        updateLink,
         deleteLink,
         addAsset,
         deleteAsset,

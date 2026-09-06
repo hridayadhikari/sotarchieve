@@ -325,3 +325,51 @@ CREATE POLICY "Active members can view activity" ON public.activity_logs
 
 CREATE POLICY "Authenticated can insert activity" ON public.activity_logs
   FOR INSERT TO authenticated WITH CHECK (actor_id = auth.uid());
+
+-- 14. SUPABASE STORAGE SETUP FOR DOCUMENTS & PDFS (Max 5MB)
+-- Insert 'documents' bucket if it does not already exist
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'documents',
+  'documents',
+  true,
+  5242880, -- 5MB in bytes (5 * 1024 * 1024)
+  ARRAY['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/markdown', 'application/octet-stream']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = true,
+  file_size_limit = 5242880;
+
+-- Storage RLS Policies for 'documents' bucket
+CREATE POLICY "Public / Authenticated can view documents storage"
+  ON storage.objects FOR SELECT
+  TO authenticated, anon
+  USING (bucket_id = 'documents');
+
+CREATE POLICY "Authenticated users can upload documents storage"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (bucket_id = 'documents');
+
+CREATE POLICY "Authenticated users can update/delete own documents storage"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (bucket_id = 'documents');
+
+-- 15. AUTO-CONFIRM USER EMAIL ON SIGNUP
+-- Automatically verifies created users without requiring manual email link verification
+CREATE OR REPLACE FUNCTION public.handle_auto_confirm_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.email_confirmed_at = COALESCE(NEW.email_confirmed_at, NOW());
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_auto_confirm ON auth.users;
+CREATE TRIGGER on_auth_user_auto_confirm
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_auto_confirm_user();
+
+

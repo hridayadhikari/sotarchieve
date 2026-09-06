@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export const Layout: React.FC = () => {
-  const { user, logout, switchMockUser, mockProfiles } = useAuth();
+  const { user, logout } = useAuth();
   const { profiles } = useData();
   const { theme, setTheme } = useTheme();
   const [isSearchOpen, setIsSearchOpen] = useState(false);

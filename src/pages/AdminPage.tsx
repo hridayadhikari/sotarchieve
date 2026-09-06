@@ -512,23 +512,38 @@ export const AdminPage: React.FC = () => {
               <thead>
                 <tr>
                   <th>Timestamp</th>
-                  <th>Actor</th>
+                  <th>Actor / Admin</th>
                   <th>Action</th>
                   <th>Target Type</th>
-                  <th>Details</th>
+                  <th>Details & Audit Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {activityLogs.map(log => (
                   <tr key={log.id}>
-                    <td style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                    <td style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                       {new Date(log.created_at).toLocaleString()}
                     </td>
-                    <td><strong>{log.actor?.full_name || 'System'}</strong></td>
-                    <td><span className="badge badge-red">{log.action}</span></td>
+                    <td>
+                      <strong>{log.actor?.full_name || log.details?.deleted_by_admin || 'System Admin'}</strong>
+                      {log.actor?.email && (
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{log.actor.email}</div>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`badge ${log.action.includes('DELETE') ? 'badge-red' : ''}`}>
+                        {log.action}
+                      </span>
+                    </td>
                     <td>{log.target_type}</td>
                     <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {log.details ? JSON.stringify(log.details) : ''}
+                      {log.details?.description ? (
+                        <span>{log.details.description}</span>
+                      ) : log.details ? (
+                        <span>{JSON.stringify(log.details)}</span>
+                      ) : (
+                        '-'
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -538,5 +553,6 @@ export const AdminPage: React.FC = () => {
         </div>
       )}
     </div>
+
   );
 };
